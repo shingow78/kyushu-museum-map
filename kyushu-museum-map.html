@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>九州歴史博物館マップ</title>
+<!-- ↓ここにGoogle Maps APIキーを入れてください -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCWNAQSdWt9p4_Cm_ABNbTnxwgHvm-6CtU&libraries=places&language=ja" defer></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyCBMVKDOwnXVa2-3ZW1ODfsM6eZ6mZ9soE",
+  authDomain: "kyusyumuseum.firebaseapp.com",
+  projectId: "kyusyumuseum",
+  storageBucket: "kyusyumuseum.firebasestorage.app",
+  messagingSenderId: "305162798674",
+  appId: "1:305162798674:web:c7900f4d813ae017b9c18b"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+window._db = db;
+window._fsLib = { doc, getDoc, setDoc, collection, getDocs };
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Noto Sans JP', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: #1a1a2e; }
+
+  header {
+    background: #1a1a2e; color: white; padding: 8px 16px;
+    display: flex; align-items: center; gap: 16px;
+    z-index: 1000; flex-shrink: 0; border-bottom: 1px solid #333;
+  }
+  header h1 { font-size: 1rem; font-weight: 700; letter-spacing: 0.05em; }
+  .stats { margin-left: auto; display: flex; gap: 16px; font-size: 0.72rem; color: #aaa; }
+  .stats strong { color: #f0c040; font-size: 1rem; }
+
+  .main { position: relative; flex: 1; overflow: hidden; }
+  #map { width: 100%; height: 100%; }
+
+  .map-search {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 500; display: flex; gap: 6px; background: white;
+    border-radius: 24px; padding: 6px 10px 6px 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3); width: 420px; max-width: 90vw;
+  }
+  .map-search input { flex: 1; border: none; outline: none; font-family: inherit; font-size: 0.85rem; color: #222; }
+  .search-btn { background: #c0392b; color: white; border: none; border-radius: 18px; padding: 4px 14px; font-size: 0.78rem; cursor: pointer; font-family: inherit; }
+
+  .pref-filters {
+    position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
+    z-index: 500; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; max-width: 90vw;
+  }
+  .pref-btn {
+    background: rgba(255,255,255,0.92); border: none; border-radius: 14px;
+    padding: 4px 12px; font-size: 0.72rem; cursor: pointer; font-family: inherit;
+    color: #444; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;
+  }
+  .pref-btn.active { background: #c0392b; color: white; }
+
+  .detail-panel {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 320px;
+    background: white; z-index: 500; box-shadow: -4px 0 20px rgba(0,0,0,0.25);
+    transform: translateX(100%); transition: transform 0.3s ease;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .detail-panel.open { transform: translateX(0); }
+
+  .detail-header { background: #c0392b; color: white; padding: 14px 16px; position: relative; flex-shrink: 0; }
+  .detail-header h2 { font-size: 0.95rem; font-weight: 700; line-height: 1.4; padding-right: 28px; }
+  .detail-header .pref-badge { font-size: 0.7rem; opacity: 0.85; margin-top: 3px; }
+  .detail-close {
+    position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2);
+    border: none; color: white; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 0.9rem;
+  }
+
+  .detail-body { overflow-y: auto; flex: 1; padding: 16px; }
+  .info-row { font-size: 0.78rem; color: #555; margin-bottom: 8px; display: flex; gap: 8px; align-items: flex-start; }
+  .info-row a { color: #c0392b; text-decoration: none; word-break: break-all; }
+  .info-row a:hover { text-decoration: underline; }
+
+  .section-label { font-size: 0.68rem; font-weight: 700; color: #888; letter-spacing: 0.1em; text-transform: uppercase; margin: 14px 0 6px; }
+
+  .visited-btn {
+    width: 100%; padding: 9px; border-radius: 6px; border: 2px solid #27ae60;
+    background: white; color: #27ae60; font-family: inherit; font-size: 0.8rem;
+    font-weight: 700; cursor: pointer; transition: all 0.2s;
+  }
+  .visited-btn.active { background: #27ae60; color: white; }
+
+  .stars { display: flex; gap: 4px; margin: 6px 0; }
+  .star { font-size: 1.4rem; cursor: pointer; color: #ddd; transition: color 0.15s; }
+  .star.on { color: #f0c040; }
+
+  textarea {
+    width: 100%; min-height: 90px; padding: 8px 10px; border: 1px solid #ddd;
+    border-radius: 6px; font-family: inherit; font-size: 0.78rem; color: #333; resize: vertical; line-height: 1.7;
+  }
+  textarea:focus { outline: none; border-color: #c0392b; }
+
+  .save-btn {
+    width: 100%; padding: 9px; background: #c0392b; color: white; border: none;
+    border-radius: 6px; font-family: inherit; font-size: 0.8rem; cursor: pointer;
+    margin-top: 10px; font-weight: 700; transition: background 0.2s;
+  }
+  .save-btn:hover { background: #a93226; }
+
+  .add-btn {
+    position: absolute; bottom: 24px; left: 16px; z-index: 500;
+    background: #1a1a2e; color: #f0c040; border: 1px solid #f0c040;
+    padding: 10px 16px; border-radius: 8px; font-family: inherit; font-size: 0.78rem;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: all 0.2s;
+  }
+  .add-btn:hover { background: #f0c040; color: #1a1a2e; }
+
+  .legend {
+    position: absolute; bottom: 24px; right: 16px; z-index: 500;
+    background: rgba(255,255,255,0.92); border-radius: 8px; padding: 10px 14px;
+    font-size: 0.72rem; color: #444; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    line-height: 2;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 10px; padding: 24px; width: 380px; max-width: 90vw; }
+  .modal h3 { font-size: 1rem; margin-bottom: 14px; color: #c0392b; }
+  .modal input, .modal select {
+    width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-family: inherit; font-size: 0.8rem; margin-bottom: 8px; color: #333;
+  }
+  .modal-hint { font-size: 0.7rem; color: #888; margin-bottom: 12px; line-height: 1.6; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .modal-btns button { flex: 1; padding: 9px; border-radius: 6px; font-family: inherit; font-size: 0.8rem; cursor: pointer; }
+  .btn-cancel { background: #f5f5f5; border: 1px solid #ddd; color: #666; }
+  .btn-add { background: #c0392b; border: none; color: white; font-weight: 700; }
+
+  .popup-name { font-weight: 700; font-size: 0.9rem; color: #c0392b; margin-bottom: 4px; }
+  .popup-addr { color: #666; font-size: 0.75rem; }
+  .popup-open-btn {
+    display: block; margin-top: 8px; background: #c0392b; color: white; border: none;
+    border-radius: 4px; padding: 6px 12px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif;
+    font-size: 0.75rem; width: 100%; font-weight: 700; cursor: pointer;
+  }
+  /* Google Maps Places 検索ボックス */
+  .places-search-wrapper { position: relative; flex: 1; }
+  #places-input { width: 100%; border: none; outline: none; font-family: inherit; font-size: 0.85rem; color: #222; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏛 九州歴史博物館マップ</h1>
+  <div id="sync-status" style="font-size:0.7rem;color:#7ecf7e;"></div>
+  <div class="stats">
+    <div>登録 <strong id="total-count">0</strong> 館</div>
+    <div>訪問済み <strong id="visited-count">0</strong> 館</div>
+    <div>達成率 <strong id="progress">0%</strong></div>
+  </div>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+
+  <div class="map-search">
+    <div class="places-search-wrapper">
+      <input type="text" id="places-input" placeholder="地図上の場所を検索（Google Maps）...">
+    </div>
+    <button class="search-btn" onclick="filterByName()">登録館を検索</button>
+  </div>
+  <!-- 登録館名検索バー -->
+  <div style="position:absolute;top:62px;left:16px;z-index:500;">
+    <input type="text" id="search-input" placeholder="登録館名で絞り込み..." oninput="filterMarkers()"
+      style="padding:6px 12px;border-radius:18px;border:none;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-family:inherit;font-size:0.78rem;width:200px;outline:none;">
+  </div>
+
+  <div class="pref-filters">
+    <button class="pref-btn active" onclick="setPref('all',this)">すべて</button>
+    <button class="pref-btn" onclick="setPref('福岡',this)">福岡</button>
+    <button class="pref-btn" onclick="setPref('佐賀',this)">佐賀</button>
+    <button class="pref-btn" onclick="setPref('長崎',this)">長崎</button>
+    <button class="pref-btn" onclick="setPref('熊本',this)">熊本</button>
+    <button class="pref-btn" onclick="setPref('大分',this)">大分</button>
+    <button class="pref-btn" onclick="setPref('宮崎',this)">宮崎</button>
+    <button class="pref-btn" onclick="setPref('鹿児島',this)">鹿児島</button>
+  </div>
+
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-header">
+      <h2 id="d-name"></h2>
+      <div class="pref-badge" id="d-pref"></div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-body">
+      <div id="d-info"></div>
+      <div class="section-label">訪問記録</div>
+      <button class="visited-btn" id="visited-btn" onclick="toggleVisited()">✓ 訪問済みにする</button>
+      <div class="section-label">評価</div>
+      <div class="stars">
+        <span class="star" onclick="setRating(1)">★</span>
+        <span class="star" onclick="setRating(2)">★</span>
+        <span class="star" onclick="setRating(3)">★</span>
+        <span class="star" onclick="setRating(4)">★</span>
+        <span class="star" onclick="setRating(5)">★</span>
+      </div>
+      <div class="section-label">メモ・感想</div>
+      <textarea id="memo" placeholder="展示の感想、次回確認したいことなど..."></textarea>
+      <button class="save-btn" onclick="saveMemo()">保存する</button>
+    </div>
+  </div>
+
+  <button class="add-btn" onclick="openModal()">＋ 館を追加</button>
+
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#c0392b"></div>未訪問</div>
+    <div class="legend-item"><div class="dot" style="background:#27ae60"></div>訪問済み</div>
+    <div class="legend-item"><div class="dot" style="background:#f0c040"></div>自分で追加</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>🏛 館を追加する</h3>
+    <p class="modal-hint">rekimin.com掲載外の歴史館を追加できます。<br>緯度経度はGoogle Mapsで右クリック→「この場所について」で確認できます。</p>
+    <input type="text" id="m-name" placeholder="館名 *">
+    <input type="text" id="m-address" placeholder="住所">
+    <input type="text" id="m-tel" placeholder="TEL">
+    <input type="text" id="m-url" placeholder="URL">
+    <select id="m-pref">
+      <option value="">県を選択</option>
+      <option>福岡県</option><option>佐賀県</option><option>長崎県</option>
+      <option>熊本県</option><option>大分県</option><option>宮崎県</option>
+      <option>鹿児島県</option><option>沖縄県</option>
+    </select>
+    <input type="number" id="m-lat" placeholder="緯度（例: 33.5196）" step="0.0001">
+    <input type="number" id="m-lng" placeholder="経度（例: 130.4737）" step="0.0001">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+      <button class="btn-add" onclick="addMuseum()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE_MUSEUMS = [
+  {id:'b0',name:'九州歴史資料館',pref:'福岡県',address:'福岡県小郡市三沢5208-3',tel:'0942-75-9501',url:'https://kyureki.jp/',lat:33.3955,lng:130.5590},
+  {id:'b1',name:'市民ミュージアム 大野城心のふるさと館',pref:'福岡県',address:'福岡県大野城市曙町3-8-3',tel:'092-558-5000',url:'http://www.onojo-occm.jp/',lat:33.5342,lng:130.4789},
+  {id:'b2',name:'志免町歴史資料室',pref:'福岡県',address:'福岡県糟屋郡志免町志免中央1-2-1',tel:'092-935-7100',url:'',lat:33.5697,lng:130.4783},
+  {id:'b3',name:'須恵町立歴史民俗資料館',pref:'福岡県',address:'福岡県糟屋郡須惠町',tel:'092-932-6312',url:'http://sue-museum.jp/history/index.html',lat:33.5804,lng:130.5089},
+  {id:'b4',name:'北九州市立長崎街道木屋瀬宿記念館',pref:'福岡県',address:'福岡県北九州市八幡西区木屋瀬3-16-26',tel:'093-619-1149',url:'',lat:33.8400,lng:130.6800},
+  {id:'b5',name:'太宰府市文化ふれあい館',pref:'福岡県',address:'福岡県太宰府市国分4-9-1',tel:'092-928-0800',url:'https://dazaifu-bunka.or.jp/',lat:33.5047,lng:130.5101},
+  {id:'b6',name:'北九州市立自然史・歴史博物館（いのちのたび博物館）',pref:'福岡県',address:'福岡県北九州市八幡東区東田2-4-1',tel:'093-681-1011',url:'http://www.kmnh.jp/',lat:33.8711,lng:130.8003},
+  {id:'b7',name:'糸島市立志摩歴史資料館',pref:'福岡県',address:'福岡県糸島市志摩初1番地',tel:'092-327-4422',url:'',lat:33.6200,lng:130.2000},
+  {id:'b8',name:'糸島市立伊都国歴史博物館',pref:'福岡県',address:'福岡県糸島市井原916',tel:'092-322-7083',url:'',lat:33.5641,lng:130.2008},
+  {id:'b9',name:'太宰府天満宮宝物殿',pref:'福岡県',address:'福岡県太宰府市宰府4-7-1',tel:'092-922-8225',url:'https://www.dazaifutenmangu.or.jp/',lat:33.5124,lng:130.5333},
+  {id:'b10',name:'田川市石炭・歴史博物館',pref:'福岡県',address:'福岡県田川市大字伊田2734-1',tel:'0947-44-5745',url:'',lat:33.6462,lng:130.8025},
+  {id:'b11',name:'求菩提資料館',pref:'福岡県',address:'福岡県豊前市大字鳥井畑247',tel:'0979-88-3203',url:'http://kubote-historical-museum.com/',lat:33.4500,lng:130.9600},
+  {id:'b12',name:'甘木歴史資料館',pref:'福岡県',address:'福岡県朝倉市甘木216-2',tel:'0946-22-7515',url:'',lat:33.4300,lng:130.6700},
+  {id:'b13',name:'九州国立博物館',pref:'福岡県',address:'福岡県太宰府市石坂4-7-2',tel:'092-918-2842',url:'https://www.kyuhaku.jp/',lat:33.5156,lng:130.5289},
+  {id:'b14',name:'福岡市博物館',pref:'福岡県',address:'福岡県福岡市早良区百道浜3-1-1',tel:'092-845-5011',url:'http://museum.city.fukuoka.jp/',lat:33.5896,lng:130.3612},
+  {id:'b15',name:'北九州市立小倉城庭園',pref:'福岡県',address:'福岡県北九州市小倉北区城内1-2',tel:'093-582-2747',url:'https://www.kokura-castle.jp/',lat:33.8841,lng:130.8761},
+  {id:'b16',name:'亀陽文庫 能古博物館',pref:'福岡県',address:'福岡県福岡市西区能古522-2',tel:'092-883-2887',url:'',lat:33.6300,lng:130.3100},
+  {id:'b17',name:'九州大学総合研究博物館',pref:'福岡県',address:'福岡県福岡市箱崎6-10-1',tel:'092-642-4252',url:'',lat:33.6263,lng:130.4264},
+  {id:'b18',name:'立花家史料館',pref:'福岡県',address:'福岡県柳川市新外町1',tel:'0944-77-7888',url:'http://www.tachibana-museum.jp/index.html',lat:33.1632,lng:130.3958},
+  {id:'b19',name:'大宰府展示館',pref:'福岡県',address:'福岡県太宰府市観世音寺四丁目6-1',tel:'092-922-7811',url:'https://www.kotodazaifu.net/',lat:33.5095,lng:130.5250},
+  {id:'b20',name:'北原白秋生家・記念館',pref:'福岡県',address:'福岡県柳川市沖端町55-1',tel:'0944-73-8940',url:'',lat:33.1621,lng:130.3900},
+  {id:'b21',name:'福岡市埋蔵文化財センター',pref:'福岡県',address:'福岡県福岡市博多区井相田2-1-94',tel:'092-571-2921',url:'',lat:33.5750,lng:130.4100},
+  {id:'b22',name:'有馬記念館',pref:'福岡県',address:'福岡県久留米市篠山町444',tel:'0942-39-8485',url:'',lat:33.3158,lng:130.5081},
+  {id:'b23',name:'柳川古文書館',pref:'福岡県',address:'福岡県柳川市隅町71-2',tel:'0944-72-1037',url:'',lat:33.1641,lng:130.4012},
+  {id:'b24',name:'行橋市歴史資料館',pref:'福岡県',address:'福岡県行橋市中央1-9-3',tel:'0930-25-3133',url:'',lat:33.7252,lng:130.9812},
+  {id:'b25',name:'八女市岩戸山歴史文化交流館',pref:'福岡県',address:'福岡県八女市吉田1562-1',tel:'0943-24-3200',url:'',lat:33.2100,lng:130.5600},
+  {id:'b26',name:'西南学院大学博物館',pref:'福岡県',address:'福岡県福岡市早良区西新3丁目13番1号',tel:'092-823-4785',url:'',lat:33.5823,lng:130.3721},
+  {id:'b27',name:'香春町歴史資料館',pref:'福岡県',address:'福岡県田川郡香春町',tel:'0947-32-8410',url:'',lat:33.6800,lng:130.8500},
+  {id:'b28',name:'観世音寺宝蔵',pref:'福岡県',address:'福岡県太宰府市観世音寺5-6-1',tel:'092-922-1810',url:'https://dazaifu.org/kanzeon-ji/',lat:33.5088,lng:130.5244},
+  {id:'b29',name:'佐賀県立名護屋城博物館',pref:'佐賀県',address:'佐賀県唐津市鎮西町名護屋1931-3',tel:'0955-82-4905',url:'https://saga-museum.jp/nagoya/',lat:33.4900,lng:129.8600},
+  {id:'b30',name:'中冨記念くすり博物館',pref:'佐賀県',address:'佐賀県鳥栖市神辺町288-1',tel:'0942-84-3334',url:'https://nakatomi-museum.or.jp/',lat:33.3741,lng:130.5100},
+  {id:'b31',name:'有田町歴史民俗資料館・有田焼参考館',pref:'佐賀県',address:'佐賀県西松浦郡有田町泉山1-4-1',tel:'0944-43-2678',url:'',lat:33.1970,lng:129.8650},
+  {id:'b32',name:'佐賀市歴史民俗館',pref:'佐賀県',address:'佐賀県佐賀市柳町2-9',tel:'0952-22-6849',url:'https://www.sagarekimin.jp/',lat:33.2634,lng:130.3006},
+  {id:'b33',name:'佐賀県立佐賀城本丸歴史館',pref:'佐賀県',address:'佐賀県佐賀市城内2-18-1',tel:'0952-41-7550',url:'https://saga-museum.jp/sagajou/',lat:33.2521,lng:130.2951},
+  {id:'b34',name:'徐福長寿館',pref:'佐賀県',address:'佐賀県佐賀市金立町',tel:'0952-98-0696',url:'',lat:33.2800,lng:130.3500},
+  {id:'b35',name:'佐野常民と三重津海軍所跡の歴史館',pref:'佐賀県',address:'佐賀県佐賀市川副町',tel:'0952-34-9455',url:'https://sano-mietsu-historymuseum.city.saga.lg.jp/',lat:33.2100,lng:130.3800},
+  {id:'b36',name:'佐賀県立博物館・佐賀県立美術館',pref:'佐賀県',address:'佐賀県佐賀市城内1-15-23',tel:'0952-24-3947',url:'https://saga-museum.jp/museum/',lat:33.2552,lng:130.2977},
+  {id:'b37',name:'徴古館',pref:'佐賀県',address:'佐賀県佐賀市松原2丁目5-22',tel:'0952-23-4200',url:'',lat:33.2600,lng:130.2900},
+  {id:'b38',name:'壱岐市立一支国博物館',pref:'長崎県',address:'長崎県壱岐市芦辺町',tel:'0920-45-2731',url:'http://www.iki-haku.jp/',lat:33.7500,lng:129.6900},
+  {id:'b39',name:'平戸市生月町博物館・島の館',pref:'長崎県',address:'長崎県平戸市生月町',tel:'0950-53-3000',url:'https://hira-shin.jp/shimanoyakata/',lat:33.3900,lng:129.4700},
+  {id:'b40',name:'長崎県対馬歴史研究センター',pref:'長崎県',address:'長崎県対馬市厳原町',tel:'0920-52-3687',url:'https://tsushima-hrc.jp/',lat:34.2000,lng:129.2900},
+  {id:'b41',name:'南島原市口之津歴史民俗資料館',pref:'長崎県',address:'長崎県南島原市口之津町',tel:'050-3381-5089',url:'',lat:32.6000,lng:130.1900},
+  {id:'b42',name:'大村市歴史資料館',pref:'長崎県',address:'長崎県大村市東本町481',tel:'0957-48-5050',url:'https://www.omura-dejihaku.jp/omura/',lat:32.9000,lng:129.9600},
+  {id:'b43',name:'グラバー園',pref:'長崎県',address:'長崎県長崎市南山手町8番1号',tel:'095-822-8223',url:'http://www.glover-garden.jp/',lat:32.7384,lng:129.8728},
+  {id:'b44',name:'新上五島町鯨賓館ミュージアム',pref:'長崎県',address:'長崎県南松浦郡新上五島町',tel:'0959-42-0180',url:'',lat:32.9700,lng:129.0800},
+  {id:'b45',name:'長崎歴史文化博物館',pref:'長崎県',address:'長崎県長崎市立山1-1-1',tel:'095-818-8366',url:'http://www.nmhc.jp/',lat:32.7540,lng:129.8760},
+  {id:'b46',name:'シーボルト記念館',pref:'長崎県',address:'長崎県長崎市鳴滝2丁目7番40号',tel:'095-823-0707',url:'',lat:32.7600,lng:129.8630},
+  {id:'b47',name:'熊本市塚原歴史民俗資料館',pref:'熊本県',address:'熊本県熊本市南区城南町',tel:'0964-28-5962',url:'',lat:32.6700,lng:130.6400},
+  {id:'b48',name:'八代市立博物館未来の森ミュージアム',pref:'熊本県',address:'熊本県八代市西松江城町12-35',tel:'0965-34-5555',url:'',lat:32.5058,lng:130.5940},
+  {id:'b49',name:'玉名市立歴史博物館こころピア',pref:'熊本県',address:'熊本県玉名市岩崎117',tel:'0968-74-3989',url:'',lat:32.9200,lng:130.5600},
+  {id:'b50',name:'熊本市田原坂西南戦争資料館',pref:'熊本県',address:'熊本県熊本市北区植木町',tel:'096-272-4982',url:'',lat:32.9000,lng:130.7200},
+  {id:'b51',name:'天草市立本渡歴史民俗資料館',pref:'熊本県',address:'熊本県天草市今釜新町3706',tel:'0969-23-5353',url:'',lat:32.4600,lng:130.1800},
+  {id:'b52',name:'熊本市立熊本博物館',pref:'熊本県',address:'熊本県熊本市中央区古京町3-2',tel:'096-324-3500',url:'https://kumamoto-city-museum.jp/',lat:32.8000,lng:130.7058},
+  {id:'b53',name:'熊本大学五高記念館',pref:'熊本県',address:'熊本県熊本市中央区黒髪2-40-1',tel:'096-342-2050',url:'',lat:32.8100,lng:130.7200},
+  {id:'b54',name:'熊本県博物館ネットワークセンター',pref:'熊本県',address:'熊本県宇城市松橋町豊福1695',tel:'0964-34-3301',url:'',lat:32.6500,lng:130.6700},
+  {id:'b55',name:'歴史公園鞠智城・温古創生館',pref:'熊本県',address:'熊本県山鹿市菊鹿町米原443-1',tel:'0968-48-3178',url:'https://kofunkan.pref.kumamoto.jp/kikuchijo/',lat:32.9800,lng:130.7900},
+  {id:'b56',name:'大分市海部古墳資料館',pref:'大分県',address:'大分県大分市大字里646-1',tel:'097-524-2300',url:'',lat:33.2300,lng:131.6500},
+  {id:'b57',name:'大分県立先哲史料館',pref:'大分県',address:'大分県大分市王子西町14番1号',tel:'097-546-9380',url:'https://www.pref.oita.jp/site/sentetsusiryokan/',lat:33.2400,lng:131.6200},
+  {id:'b58',name:'毛利空桑記念館',pref:'大分県',address:'大分県大分市鶴崎381-1',tel:'097-521-4893',url:'',lat:33.2200,lng:131.6800},
+  {id:'b59',name:'大分県立歴史博物館',pref:'大分県',address:'大分県宇佐市大字高森',tel:'0978-37-2100',url:'https://www.pref.oita.jp/site/rekishihakubutsukan/',lat:33.5300,lng:131.3500},
+  {id:'b60',name:'咸宜園教育研究センター',pref:'大分県',address:'大分県日田市淡窓2-2-18',tel:'0973-22-0268',url:'',lat:33.3200,lng:130.9400},
+  {id:'b61',name:'国東市歴史体験学習館',pref:'大分県',address:'大分県国東市国東町安国寺',tel:'0978-72-2677',url:'',lat:33.5600,lng:131.7300},
+  {id:'b62',name:'中津市歴史博物館',pref:'大分県',address:'大分県中津市1290番地',tel:'0979-23-8615',url:'http://nakahaku.jp/',lat:33.5980,lng:131.1870},
+  {id:'b63',name:'耶馬渓風物館',pref:'大分県',address:'大分県中津市本耶馬渓町',tel:'0979-52-2002',url:'',lat:33.4800,lng:131.1100},
+  {id:'b64',name:'佐伯市歴史資料館',pref:'大分県',address:'大分県佐伯市大手町1丁目2番25号',tel:'0972-22-0700',url:'',lat:32.9600,lng:131.8900},
+  {id:'b65',name:'都城島津邸',pref:'宮崎県',address:'宮崎県都城市早鈴町',tel:'0986-23-2116',url:'https://www.city.miyakonojo.miyazaki.jp/site/shimazu/',lat:31.7241,lng:131.0614},
+  {id:'b66',name:'延岡城・内藤記念博物館',pref:'宮崎県',address:'宮崎県延岡市天神小路255-2',tel:'0982-20-3335',url:'',lat:32.5800,lng:131.6600},
+  {id:'b67',name:'高千穂町コミュニティセンター',pref:'宮崎県',address:'宮崎県高千穂町大字三田井1515',tel:'0982-72-6139',url:'',lat:32.7100,lng:131.3100},
+  {id:'b68',name:'飫肥城歴史資料館',pref:'宮崎県',address:'宮崎県日南市飫肥十丁目1-2',tel:'0987-25-1905',url:'',lat:31.6400,lng:131.3700},
+  {id:'b69',name:'椎葉民俗芸能博物館',pref:'宮崎県',address:'宮崎県東臼杵郡椎葉村',tel:'0982-68-7033',url:'',lat:32.4600,lng:131.1500},
+  {id:'b70',name:'宮崎県立西都原考古博物館',pref:'宮崎県',address:'宮崎県西都市大字三宅',tel:'0983-41-0041',url:'http://saito-muse.pref.miyazaki.jp/web/index.html',lat:32.1000,lng:131.3900},
+  {id:'b71',name:'宮崎県総合博物館',pref:'宮崎県',address:'宮崎県宮崎市神宮2-4-4',tel:'0985-24-2071',url:'http://www.miyazaki-archive.jp/museum/',lat:31.9100,lng:131.4200},
+  {id:'b72',name:'ミュージアム知覧',pref:'鹿児島県',address:'鹿児島県南九州市知覧町',tel:'0993-83-4433',url:'',lat:31.3900,lng:130.4400},
+  {id:'b73',name:'鹿児島市立ふるさと考古歴史館',pref:'鹿児島県',address:'鹿児島県鹿児島市下福元町3763-1',tel:'099-266-0696',url:'',lat:31.5200,lng:130.5100},
+  {id:'b74',name:'鹿児島大学総合研究博物館',pref:'鹿児島県',address:'鹿児島県鹿児島市郡元1-21-30',tel:'099-285-8141',url:'',lat:31.5600,lng:130.5450},
+  {id:'b75',name:'尚古集成館',pref:'鹿児島県',address:'鹿児島県鹿児島市吉野町9698-1',tel:'099-247-1511',url:'http://www.shuseikan.jp/',lat:31.6100,lng:130.5700},
+  {id:'b76',name:'南さつま市歴史交流館金峰',pref:'鹿児島県',address:'鹿児島県南さつま市金峰町',tel:'0993-58-4321',url:'',lat:31.3200,lng:130.3300},
+  {id:'b77',name:'鹿児島県上野原縄文の森',pref:'鹿児島県',address:'鹿児島県霧島市国分上野原縄文の森1-1',tel:'0995-48-5701',url:'https://www.jomon-no-mori.jp/jomon-no-mori/',lat:31.7400,lng:130.7600},
+  {id:'b78',name:'南種子町郷土館',pref:'鹿児島県',address:'鹿児島県熊毛郡南種子町',tel:'0997-26-1030',url:'',lat:30.4300,lng:130.9200},
+  {id:'b79',name:'指宿市考古博物館 時遊館COCCOはしむれ',pref:'鹿児島県',address:'鹿児島県指宿市十二町2290',tel:'0993-23-5100',url:'https://www.city.ibusuki.lg.jp/cocco/',lat:31.2600,lng:130.6300},
+  {id:'b80',name:'鹿児島県歴史・美術センター黎明館',pref:'鹿児島県',address:'鹿児島県鹿児島市城山町7-2',tel:'099-222-5396',url:'https://www.pref.kagoshima.jp/reimeikan/',lat:31.5966,lng:130.5544},
+  {id:'b81',name:'薩摩藩英国留学生記念館',pref:'鹿児島県',address:'鹿児島県いちき串木野市羽鳥4930',tel:'0996-35-1865',url:'http://www.ssmuseum.jp/',lat:31.7100,lng:130.2700},
+];
+
+let museums = [];
+let records = {};
+let currentPref = 'all';
+let selectedId = null;
+let markers = {};
+let map;
+
+// ===== ローカル保存（フォールバック） =====
+function saveLocal() {
+  localStorage.setItem('kyushu_rec', JSON.stringify(records));
+  localStorage.setItem('kyushu_custom', JSON.stringify(museums.filter(m=>m.isCustom)));
+}
+
+// ===== Firestore保存 =====
+async function save() {
+  saveLocal();
+  if (!window._db || !window._fsLib) return;
+  const { doc, setDoc } = window._fsLib;
+  try {
+    await setDoc(doc(window._db, 'data', 'records'), records);
+    await setDoc(doc(window._db, 'data', 'customMuseums'), {list: museums.filter(m=>m.isCustom)});
+  } catch(e) { console.warn('Firestore書き込みエラー:', e); }
+}
+
+// ===== 初期データ読み込み =====
+async function load() {
+  // まずローカルから読み込んで即時表示
+  try {
+    const r = localStorage.getItem('kyushu_rec'); if (r) records = JSON.parse(r);
+    const c = localStorage.getItem('kyushu_custom');
+    museums = c ? [...BASE_MUSEUMS.map(m=>({...m,isCustom:false})), ...JSON.parse(c)]
+                : BASE_MUSEUMS.map(m=>({...m,isCustom:false}));
+  } catch(e) { museums = BASE_MUSEUMS.map(m=>({...m,isCustom:false})); }
+
+  // Firestoreが使えれば上書き
+  if (window._db && window._fsLib) {
+    try {
+      const { doc, getDoc } = window._fsLib;
+      const recSnap = await getDoc(doc(window._db, 'data', 'records'));
+      if (recSnap.exists()) records = recSnap.data();
+      const cusSnap = await getDoc(doc(window._db, 'data', 'customMuseums'));
+      const customList = cusSnap.exists() ? cusSnap.data().list : [];
+      museums = [...BASE_MUSEUMS.map(m=>({...m,isCustom:false})), ...customList];
+      saveLocal(); // ローカルにも反映
+    } catch(e) { console.warn('Firestore読み込みエラー:', e); }
+  }
+}
+
+let infoWindow;
+
+function makeMarkerIcon(color) {
+  return {
+    path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z',
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor: 'white',
+    strokeWeight: 1.5,
+    scale: 1.3,
+    anchor: new google.maps.Point(12, 36),
+  };
+}
+
+function getMarkerColor(museum) {
+  const rec = records[museum.id] || {};
+  return museum.isCustom ? '#f0c040' : rec.visited ? '#27ae60' : '#c0392b';
+}
+
+function renderMarkers(filtered) {
+  Object.values(markers).forEach(m => m.setMap(null));
+  markers = {};
+  const list = filtered || museums;
+  list.forEach(museum => {
+    if (!museum.lat || !museum.lng) return;
+    if (currentPref !== 'all' && !museum.pref.includes(currentPref)) return;
+    addMarker(museum);
+  });
+  updateStats();
+}
+
+function addMarker(museum) {
+  const rec = records[museum.id] || {};
+  const marker = new google.maps.Marker({
+    position: { lat: museum.lat, lng: museum.lng },
+    map: map,
+    icon: makeMarkerIcon(getMarkerColor(museum)),
+    title: museum.name,
+  });
+  const content = `
+    <div style="font-family:'Noto Sans JP',sans-serif;min-width:180px;">
+      <div class="popup-name">${museum.name}</div>
+      <div class="popup-addr">${museum.pref}</div>
+      ${rec.visited ? '<div style="color:#27ae60;font-size:0.75rem;margin-top:3px;">✓ 訪問済み</div>' : ''}
+      <button class="popup-open-btn" onclick="openDetail('${museum.id}')">詳細・メモを開く →</button>
+    </div>`;
+  marker.addListener('click', () => {
+    infoWindow.setContent(content);
+    infoWindow.open(map, marker);
+  });
+  markers[museum.id] = marker;
+}
+
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 32.5, lng: 130.8 },
+    zoom: 7,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    streetViewControl: false,
+  });
+  infoWindow = new google.maps.InfoWindow();
+
+  // Places検索（地図上の場所検索）
+  const placesInput = document.getElementById('places-input');
+  const autocomplete = new google.maps.places.Autocomplete(placesInput, {
+    componentRestrictions: { country: 'jp' },
+    fields: ['geometry', 'name'],
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (place.geometry) {
+      map.panTo(place.geometry.location);
+      map.setZoom(14);
+    }
+  });
+
+  renderMarkers();
+}
+
+function filterByName() {
+  filterMarkers();
+}
+
+function openDetail(id) {
+  if (markers[id]) markers[id].closePopup();
+  selectedId = id;
+  const m = museums.find(x=>x.id===id);
+  const rec = records[id] || {};
+  document.getElementById('d-name').textContent = m.name;
+  document.getElementById('d-pref').textContent = m.pref + '　' + m.address;
+  document.getElementById('d-info').innerHTML = `
+    <div class="info-row">📞 <span>${m.tel||'—'}</span></div>
+    ${m.url?`<div class="info-row">🔗 <a href="${m.url}" target="_blank">${m.url}</a></div>`:''}
+  `;
+  const vBtn = document.getElementById('visited-btn');
+  vBtn.textContent = rec.visited ? '✓ 訪問済み' : '✓ 訪問済みにする';
+  vBtn.className = 'visited-btn'+(rec.visited?' active':'');
+  document.getElementById('memo').value = rec.memo || '';
+  renderStars(rec.rating||0);
+  document.getElementById('detail-panel').classList.add('open');
+  if (m.lat && m.lng) map.panTo({ lat: m.lat, lng: m.lng });
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  selectedId = null;
+}
+
+function toggleVisited() {
+  if (!selectedId) return;
+  if (!records[selectedId]) records[selectedId] = {};
+  records[selectedId].visited = !records[selectedId].visited;
+  save();
+  const m = museums.find(x=>x.id===selectedId);
+  if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(getMarkerColor(m)));
+  openDetail(selectedId);
+  updateStats();
+}
+
+function setRating(n) {
+  if (!selectedId) return;
+  if (!records[selectedId]) records[selectedId] = {};
+  records[selectedId].rating = n;
+  renderStars(n);
+}
+
+function renderStars(n) {
+  document.querySelectorAll('.star').forEach((s,i)=>s.className='star'+(i<n?' on':''));
+}
+
+function saveMemo() {
+  if (!selectedId) return;
+  if (!records[selectedId]) records[selectedId] = {};
+  records[selectedId].memo = document.getElementById('memo').value;
+  save();
+  const btn = document.querySelector('.save-btn');
+  btn.textContent = '✓ 保存しました';
+  setTimeout(()=>btn.textContent='保存する', 1500);
+}
+
+function setPref(pref, btn) {
+  currentPref = pref;
+  document.querySelectorAll('.pref-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMarkers();
+}
+
+function filterMarkers() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  if (!q) { renderMarkers(); return; }
+  const filtered = museums.filter(m =>
+    m.name.toLowerCase().includes(q) || m.address.toLowerCase().includes(q)
+  );
+  renderMarkers(filtered);
+  // フィルター後、最初のマーカーに移動
+  const first = filtered.find(m => m.lat && m.lng);
+  if (first) map.panTo({ lat: first.lat, lng: first.lng });
+}
+
+function updateStats() {
+  const total = museums.length;
+  const visited = museums.filter(m=>records[m.id]?.visited).length;
+  document.getElementById('total-count').textContent = total;
+  document.getElementById('visited-count').textContent = visited;
+  document.getElementById('progress').textContent = Math.round(visited/total*100)+'%';
+}
+
+function openModal() { document.getElementById('modal').classList.add('open'); }
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  ['m-name','m-address','m-tel','m-url','m-lat','m-lng'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('m-pref').value='';
+}
+
+function addMuseum() {
+  const name = document.getElementById('m-name').value.trim();
+  if (!name) { alert('館名を入力してください'); return; }
+  const lat = parseFloat(document.getElementById('m-lat').value);
+  const lng = parseFloat(document.getElementById('m-lng').value);
+  const m = {
+    id:'c_'+Date.now(), name, isCustom:true,
+    pref: document.getElementById('m-pref').value,
+    address: document.getElementById('m-address').value,
+    tel: document.getElementById('m-tel').value,
+    url: document.getElementById('m-url').value,
+    lat: isNaN(lat)?null:lat, lng: isNaN(lng)?null:lng,
+  };
+  museums.push(m);
+  save();
+  closeModal();
+  if (m.lat && m.lng) {
+    addMarker(m);
+    map.panTo({ lat: m.lat, lng: m.lng });
+    google.maps.event.trigger(markers[m.id], 'click');
+  }
+  updateStats();
+}
+
+function showSyncStatus(msg) {
+  let el = document.getElementById('sync-status');
+  if (!el) return;
+  el.textContent = msg;
+  setTimeout(() => el.textContent = '', 3000);
+}
+
+// Firebase と Google Maps 両方の準備を待ってから起動
+let firebaseReady = false;
+let mapsReady = false;
+let appInited = false;
+
+async function tryInit() {
+  if (appInited || !firebaseReady || !mapsReady) return;
+  appInited = true;
+  await load();
+  initMap();
+  updateStats();
+  showSyncStatus('🟢 Firestore同期中');
+}
+
+// Firebase準備完了
+window.addEventListener('firebase-ready', () => {
+  firebaseReady = true;
+  tryInit();
+});
+
+// Google Maps準備完了（DOMContentLoaded後にgoogle.mapsの存在を確認）
+function waitForGoogleMaps() {
+  if (typeof google !== 'undefined' && google.maps) {
+    mapsReady = true;
+    tryInit();
+  } else {
+    setTimeout(waitForGoogleMaps, 100);
+  }
+}
+document.addEventListener('DOMContentLoaded', waitForGoogleMaps);
+
+// Firebaseタイムアウト（3秒待ってもfirebase-readyが来なければオフラインで起動）
+setTimeout(() => {
+  if (!firebaseReady) {
+    firebaseReady = true;
+    tryInit();
+    showSyncStatus('⚠️ オフラインモード');
+  }
+}, 3000);
+</script>
+</body>
+</html>
