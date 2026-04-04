@@ -197,7 +197,8 @@ function filterByName() { filterMarkers(); }
     <div class="places-search-wrapper">
       <input type="text" id="places-input" placeholder="地図上の場所を検索（Google Maps）...">
     </div>
-<button class="search-btn" onclick="filterByName()">🔍</button>
+　　<button class="search-btn" onclick="filterByName()">🔍</button>
+  </div> 
   <!-- 登録館名検索バー -->
   <div style="position:absolute;top:62px;left:16px;z-index:500;">
     <input type="text" id="search-input" placeholder="登録館名で絞り込み..." oninput="filterMarkers()"
@@ -251,8 +252,9 @@ function filterByName() { filterMarkers(); }
 <div class="modal-overlay" id="modal">
   <div class="modal">
     <h3>🏛 館を追加する</h3>
-    <p class="modal-hint">rekimin.com掲載外の歴史館を追加できます。<br>緯度経度はGoogle Mapsで右クリック→「この場所について」で確認できます。</p>
-    <input type="text" id="m-name" placeholder="館名 *">
+<p class="modal-hint">施設名や住所で検索して選ぶと館名・住所・位置が自動入力されます。</p>
+    <input type="text" id="m-place-search" placeholder="施設名・住所で検索..." style="background:#f0f8ff;border:2px solid #c0392b;">
+    <input type="text" id="m-name" placeholder="館名（自動入力または手動）*">
     <input type="text" id="m-address" placeholder="住所">
     <input type="text" id="m-tel" placeholder="TEL">
     <input type="text" id="m-url" placeholder="URL">
