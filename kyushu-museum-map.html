@@ -23,6 +23,17 @@ window._db = db;
 window._fsLib = { doc, getDoc, setDoc, collection, getDocs };
 window.dispatchEvent(new Event('firebase-ready'));
 </script>
+<script>
+// グローバル関数をHTMLから呼べるようにする
+function closeDetail() { document.getElementById('detail-panel').classList.remove('open'); selectedId = null; }
+function toggleVisited() { if(!selectedId)return; if(!records[selectedId])records[selectedId]={}; records[selectedId].visited=!records[selectedId].visited; save(); const m=museums.find(x=>x.id===selectedId); if(markers[selectedId])markers[selectedId].setIcon(makeMarkerIcon(getMarkerColor(m))); openDetail(selectedId); updateStats(); }
+function setRating(n) { if(!selectedId)return; if(!records[selectedId])records[selectedId]={}; records[selectedId].rating=n; renderStars(n); }
+function saveMemo() { if(!selectedId)return; if(!records[selectedId])records[selectedId]={}; records[selectedId].memo=document.getElementById('memo').value; save(); const btn=document.querySelector('.save-btn'); btn.textContent='✓ 保存しました'; setTimeout(()=>btn.textContent='保存する',1500); }
+function setPref(pref,btn) { currentPref=pref; document.querySelectorAll('.pref-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderMarkers(); }
+function openModal() { document.getElementById('modal').classList.add('open'); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); ['m-name','m-address','m-tel','m-url','m-lat','m-lng'].forEach(id=>document.getElementById(id).value=''); document.getElementById('m-pref').value=''; }
+function filterByName() { filterMarkers(); }
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
