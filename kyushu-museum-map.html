@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>九州歴史博物館マップ</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- ↓ここにGoogle Maps APIキーを入れてください -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCWNAQSdWt9p4_Cm_ABNbTnxwgHvm-6CtU&libraries=places&language=ja&callback=initMap" async defer></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -50,7 +50,7 @@ window.dispatchEvent(new Event('firebase-ready'));
   .search-btn { background: #c0392b; color: white; border: none; border-radius: 18px; padding: 4px 14px; font-size: 0.78rem; cursor: pointer; font-family: inherit; }
 
   .pref-filters {
-    position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
     z-index: 500; display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; max-width: 90vw;
   }
   .pref-btn {
@@ -138,15 +138,16 @@ window.dispatchEvent(new Event('firebase-ready'));
   .btn-cancel { background: #f5f5f5; border: 1px solid #ddd; color: #666; }
   .btn-add { background: #c0392b; border: none; color: white; font-weight: 700; }
 
-  .leaflet-popup-content-wrapper { border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
-  .leaflet-popup-content { margin: 10px 14px; font-family: 'Noto Sans JP', sans-serif; font-size: 0.82rem; line-height: 1.6; min-width: 180px; }
   .popup-name { font-weight: 700; font-size: 0.9rem; color: #c0392b; margin-bottom: 4px; }
   .popup-addr { color: #666; font-size: 0.75rem; }
   .popup-open-btn {
     display: block; margin-top: 8px; background: #c0392b; color: white; border: none;
     border-radius: 4px; padding: 6px 12px; cursor: pointer; font-family: 'Noto Sans JP', sans-serif;
-    font-size: 0.75rem; width: 100%; font-weight: 700;
+    font-size: 0.75rem; width: 100%; font-weight: 700; cursor: pointer;
   }
+  /* Google Maps Places 検索ボックス */
+  .places-search-wrapper { position: relative; flex: 1; }
+  #places-input { width: 100%; border: none; outline: none; font-family: inherit; font-size: 0.85rem; color: #222; }
 </style>
 </head>
 <body>
@@ -165,8 +166,15 @@ window.dispatchEvent(new Event('firebase-ready'));
   <div id="map"></div>
 
   <div class="map-search">
-    <input type="text" id="search-input" placeholder="館名・住所で検索..." oninput="filterMarkers()">
-    <button class="search-btn" onclick="filterMarkers()">検索</button>
+    <div class="places-search-wrapper">
+      <input type="text" id="places-input" placeholder="地図上の場所を検索（Google Maps）...">
+    </div>
+    <button class="search-btn" onclick="filterByName()">登録館を検索</button>
+  </div>
+  <!-- 登録館名検索バー -->
+  <div style="position:absolute;top:62px;left:16px;z-index:500;">
+    <input type="text" id="search-input" placeholder="登録館名で絞り込み..." oninput="filterMarkers()"
+      style="padding:6px 12px;border-radius:18px;border:none;box-shadow:0 2px 8px rgba(0,0,0,0.2);font-family:inherit;font-size:0.78rem;width:200px;outline:none;">
   </div>
 
   <div class="pref-filters">
@@ -370,15 +378,27 @@ async function load() {
   }
 }
 
-function makeIcon(museum) {
+let infoWindow;
+
+function makeMarkerIcon(color) {
+  return {
+    path: 'M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z',
+    fillColor: color,
+    fillOpacity: 1,
+    strokeColor: 'white',
+    strokeWeight: 1.5,
+    scale: 1.3,
+    anchor: new google.maps.Point(12, 36),
+  };
+}
+
+function getMarkerColor(museum) {
   const rec = records[museum.id] || {};
-  const color = museum.isCustom ? '#f0c040' : rec.visited ? '#27ae60' : '#c0392b';
-  const svg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36"><path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z" fill="${color}" stroke="white" stroke-width="1.5"/><circle cx="12" cy="12" r="5" fill="white"/></svg>`);
-  return L.icon({ iconUrl: 'data:image/svg+xml,'+svg, iconSize:[24,36], iconAnchor:[12,36], popupAnchor:[0,-40] });
+  return museum.isCustom ? '#f0c040' : rec.visited ? '#27ae60' : '#c0392b';
 }
 
 function renderMarkers(filtered) {
-  Object.values(markers).forEach(m => map.removeLayer(m));
+  Object.values(markers).forEach(m => m.setMap(null));
   markers = {};
   const list = filtered || museums;
   list.forEach(museum => {
@@ -391,23 +411,55 @@ function renderMarkers(filtered) {
 
 function addMarker(museum) {
   const rec = records[museum.id] || {};
-  const marker = L.marker([museum.lat, museum.lng], {icon: makeIcon(museum)});
-  marker.bindPopup(`
-    <div class="popup-name">${museum.name}</div>
-    <div class="popup-addr">${museum.pref}</div>
-    ${rec.visited ? '<div style="color:#27ae60;font-size:0.75rem;margin-top:3px;">✓ 訪問済み</div>' : ''}
-    <button class="popup-open-btn" onclick="openDetail('${museum.id}')">詳細・メモを開く →</button>
-  `);
-  marker.addTo(map);
+  const marker = new google.maps.Marker({
+    position: { lat: museum.lat, lng: museum.lng },
+    map: map,
+    icon: makeMarkerIcon(getMarkerColor(museum)),
+    title: museum.name,
+  });
+  const content = `
+    <div style="font-family:'Noto Sans JP',sans-serif;min-width:180px;">
+      <div class="popup-name">${museum.name}</div>
+      <div class="popup-addr">${museum.pref}</div>
+      ${rec.visited ? '<div style="color:#27ae60;font-size:0.75rem;margin-top:3px;">✓ 訪問済み</div>' : ''}
+      <button class="popup-open-btn" onclick="openDetail('${museum.id}')">詳細・メモを開く →</button>
+    </div>`;
+  marker.addListener('click', () => {
+    infoWindow.setContent(content);
+    infoWindow.open(map, marker);
+  });
   markers[museum.id] = marker;
 }
 
 function initMap() {
-  map = L.map('map', {center:[32.5, 130.8], zoom:7});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom:18
-  }).addTo(map);
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 32.5, lng: 130.8 },
+    zoom: 7,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    streetViewControl: false,
+  });
+  infoWindow = new google.maps.InfoWindow();
+
+  // Places検索（地図上の場所検索）
+  const placesInput = document.getElementById('places-input');
+  const autocomplete = new google.maps.places.Autocomplete(placesInput, {
+    componentRestrictions: { country: 'jp' },
+    fields: ['geometry', 'name'],
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (place.geometry) {
+      map.panTo(place.geometry.location);
+      map.setZoom(14);
+    }
+  });
+
   renderMarkers();
+}
+
+function filterByName() {
+  filterMarkers();
 }
 
 function openDetail(id) {
@@ -427,7 +479,7 @@ function openDetail(id) {
   document.getElementById('memo').value = rec.memo || '';
   renderStars(rec.rating||0);
   document.getElementById('detail-panel').classList.add('open');
-  if (m.lat && m.lng) map.panTo([m.lat, m.lng]);
+  if (m.lat && m.lng) map.panTo({ lat: m.lat, lng: m.lng });
 }
 
 function closeDetail() {
@@ -441,7 +493,7 @@ function toggleVisited() {
   records[selectedId].visited = !records[selectedId].visited;
   save();
   const m = museums.find(x=>x.id===selectedId);
-  if (markers[selectedId]) markers[selectedId].setIcon(makeIcon(m));
+  if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(getMarkerColor(m)));
   openDetail(selectedId);
   updateStats();
 }
@@ -481,10 +533,9 @@ function filterMarkers() {
     m.name.toLowerCase().includes(q) || m.address.toLowerCase().includes(q)
   );
   renderMarkers(filtered);
-  if (Object.keys(markers).length > 0) {
-    const grp = L.featureGroup(Object.values(markers));
-    map.fitBounds(grp.getBounds().pad(0.3));
-  }
+  // フィルター後、最初のマーカーに移動
+  const first = filtered.find(m => m.lat && m.lng);
+  if (first) map.panTo({ lat: first.lat, lng: first.lng });
 }
 
 function updateStats() {
@@ -520,18 +571,10 @@ function addMuseum() {
   closeModal();
   if (m.lat && m.lng) {
     addMarker(m);
-    map.panTo([m.lat, m.lng]);
-    setTimeout(()=>markers[m.id]?.openPopup(), 300);
+    map.panTo({ lat: m.lat, lng: m.lng });
+    google.maps.event.trigger(markers[m.id], 'click');
   }
   updateStats();
-}
-
-// Firebase準備後に初期化
-async function init() {
-  await load();
-  initMap();
-  updateStats();
-  showSyncStatus('🟢 Firestore同期中');
 }
 
 function showSyncStatus(msg) {
@@ -541,13 +584,30 @@ function showSyncStatus(msg) {
   setTimeout(() => el.textContent = '', 3000);
 }
 
-// firebase-readyイベントを待つ（タイムアウト付き）
-let inited = false;
-window.addEventListener('firebase-ready', () => {
-  if (!inited) { inited = true; init(); }
-});
+// Google Maps SDK読み込み完了後に呼ばれるコールバック
+window.initMap = async function() {
+  await load();
+  initMap();
+  updateStats();
+  showSyncStatus('🟢 Firestore同期中');
+};
+
+// Firebase準備完了を待つ（Google Maps SDKより先にFirebaseが準備できる場合）
+let firebaseReady = false;
+let mapsReady = false;
+async function tryInit() {
+  if (!firebaseReady || !mapsReady) return;
+  await load();
+  initMap();
+  updateStats();
+  showSyncStatus('🟢 Firestore同期中');
+}
+window.addEventListener('firebase-ready', () => { firebaseReady = true; tryInit(); });
+// Google Maps callbackが先に呼ばれた場合はfirebase-readyを待つ
+const _origInitMap = window.initMap;
+window.initMap = function() { mapsReady = true; tryInit(); };
 setTimeout(() => {
-  if (!inited) { inited = true; init(); showSyncStatus('⚠️ オフラインモード'); }
+  if (!firebaseReady) { firebaseReady = true; tryInit(); showSyncStatus('⚠️ オフラインモード'); }
 }, 3000);
 </script>
 </body>
