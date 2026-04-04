@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>九州歴史博物館マップ</title>
 <!-- ↓ここにGoogle Maps APIキーを入れてください -->
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCWNAQSdWt9p4_Cm_ABNbTnxwgHvm-6CtU&libraries=places&language=ja&callback=initMap" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&libraries=places&language=ja" defer></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
@@ -584,30 +584,44 @@ function showSyncStatus(msg) {
   setTimeout(() => el.textContent = '', 3000);
 }
 
-// Google Maps SDK読み込み完了後に呼ばれるコールバック
-window.initMap = async function() {
-  await load();
-  initMap();
-  updateStats();
-  showSyncStatus('🟢 Firestore同期中');
-};
-
-// Firebase準備完了を待つ（Google Maps SDKより先にFirebaseが準備できる場合）
+// Firebase と Google Maps 両方の準備を待ってから起動
 let firebaseReady = false;
 let mapsReady = false;
+let appInited = false;
+
 async function tryInit() {
-  if (!firebaseReady || !mapsReady) return;
+  if (appInited || !firebaseReady || !mapsReady) return;
+  appInited = true;
   await load();
   initMap();
   updateStats();
   showSyncStatus('🟢 Firestore同期中');
 }
-window.addEventListener('firebase-ready', () => { firebaseReady = true; tryInit(); });
-// Google Maps callbackが先に呼ばれた場合はfirebase-readyを待つ
-const _origInitMap = window.initMap;
-window.initMap = function() { mapsReady = true; tryInit(); };
+
+// Firebase準備完了
+window.addEventListener('firebase-ready', () => {
+  firebaseReady = true;
+  tryInit();
+});
+
+// Google Maps準備完了（DOMContentLoaded後にgoogle.mapsの存在を確認）
+function waitForGoogleMaps() {
+  if (typeof google !== 'undefined' && google.maps) {
+    mapsReady = true;
+    tryInit();
+  } else {
+    setTimeout(waitForGoogleMaps, 100);
+  }
+}
+document.addEventListener('DOMContentLoaded', waitForGoogleMaps);
+
+// Firebaseタイムアウト（3秒待ってもfirebase-readyが来なければオフラインで起動）
 setTimeout(() => {
-  if (!firebaseReady) { firebaseReady = true; tryInit(); showSyncStatus('⚠️ オフラインモード'); }
+  if (!firebaseReady) {
+    firebaseReady = true;
+    tryInit();
+    showSyncStatus('⚠️ オフラインモード');
+  }
 }, 3000);
 </script>
 </body>
