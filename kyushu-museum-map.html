@@ -473,7 +473,7 @@ function filterByName() {
 }
 
 window.openDetail = function openDetail(id) {
-  if (markers[id]) markers[id].closePopup();
+  if (infoWindow) infoWindow.close();
   selectedId = id;
   const m = museums.find(x=>x.id===id);
   const rec = records[id] || {};
