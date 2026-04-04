@@ -566,7 +566,28 @@ function updateStats() {
   document.getElementById('progress').textContent = Math.round(visited/total*100)+'%';
 }
 
-function openModal() { document.getElementById('modal').classList.add('open'); }
+function openModal() {
+  document.getElementById('modal').classList.add('open');
+  // Places Autocomplete を検索ボックスに設定
+  const searchInput = document.getElementById('m-place-search');
+  const ac = new google.maps.places.Autocomplete(searchInput, {
+    componentRestrictions: { country: 'jp' },
+    fields: ['name','formatted_address','geometry'],
+  });
+  ac.addListener('place_changed', () => {
+    const place = ac.getPlace();
+    if (!place.geometry) return;
+    document.getElementById('m-name').value = place.name || '';
+    document.getElementById('m-address').value = place.formatted_address || '';
+    document.getElementById('m-lat').value = place.geometry.location.lat();
+    document.getElementById('m-lng').value = place.geometry.location.lng();
+    // 県を自動判定
+    const addr = place.formatted_address || '';
+    const prefs = ['福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+    const found = prefs.find(p => addr.includes(p));
+    if (found) document.getElementById('m-pref').value = found;
+  });
+}
 function closeModal() {
   document.getElementById('modal').classList.remove('open');
   ['m-name','m-address','m-tel','m-url','m-lat','m-lng'].forEach(id=>document.getElementById(id).value='');
