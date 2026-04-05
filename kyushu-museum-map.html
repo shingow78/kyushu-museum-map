@@ -361,8 +361,9 @@ async function load() {
       if (recSnap.exists()) records = recSnap.data();
       const cusSnap = await getDoc(doc(window._db, 'data', 'customMuseums'));
       const customList = cusSnap.exists() ? cusSnap.data().list : [];
-      museums = [...BASE_MUSEUMS.map(m=>({...m,isCustom:false})), ...customList];
-      saveLocal();
+      const museumsSnap = await getDocs(collection(window._db, 'museums'));
+      const baseMuseums = museumsSnap.docs.map(d => ({...d.data(), isCustom: false}));
+      museums = [...baseMuseums, ...customList];      saveLocal();
     } catch(e) { console.warn('Firestore読み込みエラー:', e); }
   }
 }
